@@ -1,51 +1,45 @@
-import { initializeDatabase } from '../../utils/db';
+import db from '../../utils/db';
 
 export default async function handler(req, res) {
-  const db = await initializeDatabase();
+  try {
+    switch (req.method) {
+      case 'GET':
+        const { page = 1, pageSize = 10, sheet_name = 'default' } = req.query;
+        console.log('Fetching expenses:', { page, pageSize, sheet_name }); // Debug log
+        
+        const { data, total } = await db.getExpenses(parseInt(page), parseInt(pageSize), sheet_name);
+        console.log('Database response:', { data, total }); // Debug log
+        
+        if (!data) {
+          return res.status(200).json({ data: [], total: 0 });
+        }
+        
+        res.status(200).json({ data, total });
+        break;
 
-  if (req.method === 'GET') {
-    try {
-      const sheet = req.query.sheet || 'default';
-      const expenses = await db.all('SELECT * FROM expenses WHERE sheet_name = ? ORDER BY date DESC', [sheet]);
-      res.status(200).json({ success: true, data: expenses });
-    } catch (error) {
-      console.error('Error fetching expenses:', error);
-      res.status(500).json({ success: false, error: error.message });
+      case 'POST':
+        const newExpense = await db.insertExpense(req.body);
+        res.status(201).json(newExpense);
+        break;
+
+      case 'PUT':
+        const { id, ...expenseData } = req.body;
+        const updatedExpense = await db.updateExpense(id, expenseData);
+        res.status(200).json(updatedExpense);
+        break;
+
+      case 'DELETE':
+        const { id: expenseId } = req.query;
+        await db.deleteExpense(expenseId);
+        res.status(200).json({ message: 'Expense deleted successfully' });
+        break;
+
+      default:
+        res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE']);
+        res.status(405).end(`Method ${req.method} Not Allowed`);
     }
-  } else if (req.method === 'POST') {
-    try {
-      const { date, expense, category, amount, sheet_name = 'default' } = req.body;
-      await db.run(
-        'INSERT INTO expenses (date, expense, category, amount, sheet_name) VALUES (?, ?, ?, ?, ?)',
-        [date, expense, category, amount, sheet_name]
-      );
-      res.status(200).json({ success: true });
-    } catch (error) {
-      console.error('Error creating expense:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  } else if (req.method === 'PUT') {
-    try {
-      const { id, date, expense, category, amount, sheet_name = 'default' } = req.body;
-      await db.run(
-        'UPDATE expenses SET date = ?, expense = ?, category = ?, amount = ?, sheet_name = ? WHERE id = ?',
-        [date, expense, category, amount, sheet_name, id]
-      );
-      res.status(200).json({ success: true });
-    } catch (error) {
-      console.error('Error updating expense:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  } else if (req.method === 'DELETE') {
-    try {
-      const { id } = req.query;
-      await db.run('DELETE FROM expenses WHERE id = ?', [id]);
-      res.status(200).json({ success: true });
-    } catch (error) {
-      console.error('Error deleting expense:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  } else {
-    res.status(405).json({ success: false, error: 'Method not allowed' });
+  } catch (error) {
+    console.error('Error in expenses API:', error);
+    res.status(500).json({ error: error.message });
   }
 } 

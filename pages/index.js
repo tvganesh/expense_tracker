@@ -80,6 +80,9 @@ export default function Home() {
   const [sheetToDelete, setSheetToDelete] = useState('');
   const [expensePage, setExpensePage] = useState(1);
   const [incomePage, setIncomePage] = useState(1);
+  const [totalExpensePages, setTotalExpensePages] = useState(1);
+  const [totalIncomePages, setTotalIncomePages] = useState(1);
+  const [error, setError] = useState(null);
   const rowsPerPage = 15;
   const [analyzeMenuOpen, setAnalyzeMenuOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -89,6 +92,7 @@ export default function Home() {
   const [allSheetsData, setAllSheetsData] = useState({ expenses: [], income: [] });
   const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [comparisonCategories, setComparisonCategories] = useState([]);
+  const pageSize = 10; // Use the same page size as in the API
 
   // Fetch data when component mounts
   useEffect(() => {
@@ -113,32 +117,52 @@ export default function Home() {
   // Fetch expenses
   const fetchExpenses = async () => {
     try {
-      const response = await fetch(`/api/expenses?sheet=${currentSheet}`);
-      const data = await response.json();
-      if (data.success) {
-        setExpenses(data.data);
+      const response = await fetch(`/api/expenses?page=${expensePage}&pageSize=10&sheet_name=${currentSheet}`);
+      const result = await response.json();
+      console.log('Expenses API Response:', result); // Debug log
+      
+      if (result.error) {
+        throw new Error(result.error);
       }
+      
+      if (!result.data) {
+        console.error('No data in response:', result);
+        setExpenses([]);
+        setTotalExpensePages(1);
+        return;
+      }
+
+      setExpenses(result.data);
+      setTotalExpensePages(Math.ceil(result.total / 10));
     } catch (error) {
       console.error('Error fetching expenses:', error);
+      setError('Failed to fetch expenses');
+      setExpenses([]);
+      setTotalExpensePages(1);
     }
   };
 
   // Fetch income
   const fetchIncome = async () => {
     try {
-      const response = await fetch(`/api/income?sheet=${currentSheet}`);
-      const data = await response.json();
-      if (data.success) {
-        setIncome(data.data);
+      const response = await fetch(`/api/income?page=${incomePage}&pageSize=10&sheet_name=${currentSheet}`);
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
       }
+      setIncome(result.data);
+      setTotalIncomePages(Math.ceil(result.total / 10));
     } catch (error) {
       console.error('Error fetching income:', error);
+      setError('Failed to fetch income');
     }
   };
 
   // Handle sheet change
   const handleSheetChange = (newSheet) => {
     setCurrentSheet(newSheet);
+    setExpensePage(1);
+    setIncomePage(1);
   };
 
   // Effect to reload data when sheet changes
@@ -146,6 +170,15 @@ export default function Home() {
     fetchExpenses();
     fetchIncome();
   }, [currentSheet]);
+
+  // Effect to reload data when page changes
+  useEffect(() => {
+    fetchExpenses();
+  }, [expensePage]);
+
+  useEffect(() => {
+    fetchIncome();
+  }, [incomePage]);
 
   // Handle expense form changes
   const handleExpenseChange = (e) => {
@@ -603,44 +636,41 @@ export default function Home() {
     }
   };
 
-  // Calculate pagination for expenses
-  const expenseStart = (expensePage - 1) * rowsPerPage;
-  const expenseEnd = expensePage * rowsPerPage;
-  const totalExpensePages = Math.ceil(expenses.length / rowsPerPage);
-  const currentExpenses = expenses
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(expenseStart, expenseEnd);
+  // Use backend-paginated data directly
+  const expenseStart = (expensePage - 1) * pageSize + 1;
+  const expenseEnd = expenseStart + expenses.length - 1;
+  const currentExpenses = expenses;
 
-  // Calculate pagination for income
-  const incomeStart = (incomePage - 1) * rowsPerPage;
-  const incomeEnd = incomePage * rowsPerPage;
-  const totalIncomePages = Math.ceil(income.length / rowsPerPage);
-  const currentIncome = income
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(incomeStart, incomeEnd);
+  // Use backend-paginated data directly for income
+  const incomeStart = (incomePage - 1) * pageSize + 1;
+  const incomeEnd = incomeStart + income.length - 1;
+  const currentIncome = income;
 
   // Pagination handlers
   const handleExpensePrevPage = () => {
-    setExpensePage(prev => Math.max(1, prev - 1));
+    if (expensePage > 1) {
+      setExpensePage(expensePage - 1);
+    }
   };
 
   const handleExpenseNextPage = () => {
-    setExpensePage(prev => Math.min(totalExpensePages, prev + 1));
+    if (expensePage < totalExpensePages) {
+      setExpensePage(expensePage + 1);
+    }
   };
 
+  // Handle pagination for income
   const handleIncomePrevPage = () => {
-    setIncomePage(prev => Math.max(1, prev - 1));
+    if (incomePage > 1) {
+      setIncomePage(incomePage - 1);
+    }
   };
 
   const handleIncomeNextPage = () => {
-    setIncomePage(prev => Math.min(totalIncomePages, prev + 1));
+    if (incomePage < totalIncomePages) {
+      setIncomePage(incomePage + 1);
+    }
   };
-
-  // Reset pagination when changing sheets
-  useEffect(() => {
-    setExpensePage(1);
-    setIncomePage(1);
-  }, [currentSheet]);
 
   // Add this useEffect at the component level (outside any conditional rendering)
   useEffect(() => {
@@ -1319,7 +1349,7 @@ export default function Home() {
                     backgroundColor: '#fff'
                   }}>
                     <div style={{ fontSize: '14px', color: '#666' }}>
-                      Showing {expenseStart + 1}-{Math.min(expenseEnd, expenses.length)} of {expenses.length} entries
+                      Showing {expenses.length === 0 ? 0 : expenseStart}-{expenseEnd} of {totalExpensePages * pageSize} entries
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button
@@ -1579,7 +1609,7 @@ export default function Home() {
                     backgroundColor: '#fff'
                   }}>
                     <div style={{ fontSize: '14px', color: '#666' }}>
-                      Showing {incomeStart + 1}-{Math.min(incomeEnd, income.length)} of {income.length} entries
+                      Showing {income.length === 0 ? 0 : incomeStart}-{incomeEnd} of {totalIncomePages * pageSize} entries
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button
