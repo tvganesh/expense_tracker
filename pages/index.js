@@ -680,18 +680,25 @@ export default function Home() {
         const allExpenses = [];
         const allIncome = [];
         const sheetsToProcess = sheets.filter(sheet => sheet !== 'default');
+        console.log('Sheets to process:', sheetsToProcess); // DEBUG
         for (const sheet of sheetsToProcess) {
-          const expResponse = await fetch(`/api/expenses?sheet=${sheet}`);
+          console.log('Fetching expenses for sheet:', sheet); // DEBUG
+          const expResponse = await fetch(`/api/expenses?sheet_name=${sheet}`);
           const expData = await expResponse.json();
-          if (expData.success) {
+          console.log('Expenses API response for', sheet, expData); // DEBUG
+          if (expData.data) {
             allExpenses.push(...expData.data.map(item => ({...item, sheet_name: sheet})));
           }
-          const incResponse = await fetch(`/api/income?sheet=${sheet}`);
+          console.log('Fetching income for sheet:', sheet); // DEBUG
+          const incResponse = await fetch(`/api/income?sheet_name=${sheet}`);
           const incData = await incResponse.json();
-          if (incData.success) {
+          console.log('Income API response for', sheet, incData); // DEBUG
+          if (incData.data) {
             allIncome.push(...incData.data.map(item => ({...item, sheet_name: sheet})));
           }
         }
+        console.log('All expenses collected:', allExpenses); // DEBUG
+        console.log('All income collected:', allIncome); // DEBUG
         setAllSheetsData({ expenses: allExpenses, income: allIncome });
       } catch (error) {
         console.error('Error fetching all sheets data:', error);
@@ -712,6 +719,8 @@ export default function Home() {
   const groceryJune = allSheetsData.expenses.filter(
     e => e.category === 'grocery' && e.date >= '2025-06-01' && e.date <= '2025-06-30'
   );
+
+  console.log('allSheetsData for report:', allSheetsData);
 
   return (
     <div style={{ minHeight: '100vh', fontFamily: 'Arial, sans-serif', fontSize: '14px' }}>
@@ -2755,6 +2764,8 @@ export default function Home() {
                     return date.toLocaleString('default', { month: 'long', year: 'numeric' });
                   };
                   
+                  console.log('monthlyData:', monthlyData, 'sortedMonths:', sortedMonths);
+                  
                   return (
                     <div style={{ background: '#fafafa', borderRadius: '8px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                       <div style={{ marginBottom: '15px', backgroundColor: '#e3f2fd', padding: '10px', borderRadius: '4px', fontSize: '14px' }}>
@@ -2852,7 +2863,6 @@ export default function Home() {
 
             {selectedSection === 'monthly_comparison' && (
               <div style={{ marginTop: '0', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-                <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#333' }}>Monthly Expense Comparison (May vs June)</h3>
                 {(() => {
                   if (isLoadingReport) {
                     return (
@@ -2862,13 +2872,33 @@ export default function Home() {
                     );
                   }
 
-                  // DEBUG: Show grocery entries for May and June 2025
-                  const groceryMay = allSheetsData.expenses.filter(
-                    e => e.category === 'grocery' && e.date >= '2025-05-01' && e.date <= '2025-05-31'
-                  );
-                  const groceryJune = allSheetsData.expenses.filter(
-                    e => e.category === 'grocery' && e.date >= '2025-06-01' && e.date <= '2025-06-30'
-                  );
+                  // Get all unique months from the data and sort them
+                  const availableMonths = [...new Set(
+                    allSheetsData.expenses.map(e => e.date.substring(0, 7))
+                  )].sort();
+
+                  // If we have less than 2 months, show a message
+                  if (availableMonths.length < 2) {
+                    return (
+                      <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                        Need at least 2 months of data to compare. You have data for: {availableMonths.length} month(s).
+                      </div>
+                    );
+                  }
+
+                  // Use the last two months for comparison
+                  const month1 = availableMonths[availableMonths.length - 2]; // Second to last month
+                  const month2 = availableMonths[availableMonths.length - 1]; // Last month
+
+                  // Format month for display (YYYY-MM to Month YYYY)
+                  const formatMonth = (yearMonth) => {
+                    const [year, month] = yearMonth.split('-');
+                    const date = new Date(year, parseInt(month) - 1);
+                    return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                  };
+
+                  const month1Name = formatMonth(month1);
+                  const month2Name = formatMonth(month2);
 
                   // Category selection UI
                   const CategorySelector = () => (
@@ -2911,51 +2941,39 @@ export default function Home() {
                     </div>
                   );
 
-                  // Process data for selected categories
-                  const mayStart = '2025-05-01';
-                  const mayEnd = '2025-05-31';
-                  const junStart = '2025-06-01';
-                  const junEnd = '2025-06-30';
+                  // Process data for selected categories using dynamic months
+                  const month1Start = `${month1}-01`;
+                  const month1End = `${month1}-31`;
+                  const month2Start = `${month2}-01`;
+                  const month2End = `${month2}-31`;
 
-                  // Filter expenses for each month and category (ignore sheet_name)
-                  const mayExpenses = allSheetsData.expenses.filter(
-                    e => e.date >= mayStart && e.date <= mayEnd
+                  // Filter expenses for each month and category
+                  const month1Expenses = allSheetsData.expenses.filter(
+                    e => e.date >= month1Start && e.date <= month1End
                   );
-                  const junExpenses = allSheetsData.expenses.filter(
-                    e => e.date >= junStart && e.date <= junEnd
+                  const month2Expenses = allSheetsData.expenses.filter(
+                    e => e.date >= month2Start && e.date <= month2End
                   );
 
                   // Build monthlyData for selected categories
-                  const monthlyData = {
-                    '2025-05': {},
-                    '2025-06': {}
-                  };
+                  const monthlyData = {};
+                  monthlyData[month1] = {};
+                  monthlyData[month2] = {};
+                  
                   comparisonCategories.forEach(category => {
-                    monthlyData['2025-05'][category] = mayExpenses
+                    monthlyData[month1][category] = month1Expenses
                       .filter(e => e.category === category)
                       .reduce((sum, e) => sum + parseFloat(e.amount), 0);
-                    monthlyData['2025-06'][category] = junExpenses
+                    monthlyData[month2][category] = month2Expenses
                       .filter(e => e.category === category)
                       .reduce((sum, e) => sum + parseFloat(e.amount), 0);
                   });
 
-                  // Generate color palette
-                  const generateColorPalette = (count) => {
-                    const baseColors = [
-                      '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD',
-                      '#D4A5A5', '#9B59B6', '#3498DB', '#E67E22', '#2ECC71'
-                    ];
-                    const colors = [];
-                    for (let i = 0; i < count; i++) {
-                      colors.push(baseColors[i % baseColors.length]);
-                    }
-                    return colors;
-                  };
-
-                  const comparisonBarColors = generateColorPalette(comparisonCategories.length);
-
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                      <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#333' }}>
+                        Monthly Expense Comparison ({month1Name} vs {month2Name})
+                      </h3>
                       <CategorySelector />
                       
                       {comparisonCategories.length > 0 ? (
@@ -2969,15 +2987,15 @@ export default function Home() {
                                   labels: comparisonCategories,
                                   datasets: [
                                     {
-                                      label: 'May 2025',
-                                      data: comparisonCategories.map(category => monthlyData['2025-05'][category] || 0),
+                                      label: month1Name,
+                                      data: comparisonCategories.map(category => monthlyData[month1][category] || 0),
                                       backgroundColor: 'rgba(33, 150, 243, 0.7)', // Blue
                                       borderColor: 'rgba(33, 150, 243, 1)',
                                       borderWidth: 1
                                     },
                                     {
-                                      label: 'June 2025',
-                                      data: comparisonCategories.map(category => monthlyData['2025-06'][category] || 0),
+                                      label: month2Name,
+                                      data: comparisonCategories.map(category => monthlyData[month2][category] || 0),
                                       backgroundColor: 'rgba(76, 175, 80, 0.7)', // Green
                                       borderColor: 'rgba(76, 175, 80, 1)',
                                       borderWidth: 1
@@ -3031,24 +3049,24 @@ export default function Home() {
                                 <thead>
                                   <tr style={{ backgroundColor: '#f3e5f5' }}>
                                     <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Category</th>
-                                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>May 2025</th>
-                                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>June 2025</th>
+                                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>{month1Name}</th>
+                                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>{month2Name}</th>
                                     <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>Difference</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {comparisonCategories.map(category => {
-                                    const mayAmount = monthlyData['2025-05'][category] || 0;
-                                    const juneAmount = monthlyData['2025-06'][category] || 0;
-                                    const difference = juneAmount - mayAmount;
+                                    const month1Amount = monthlyData[month1][category] || 0;
+                                    const month2Amount = monthlyData[month2][category] || 0;
+                                    const difference = month2Amount - month1Amount;
                                     return (
                                       <tr key={category} style={{ borderBottom: '1px solid #eee' }}>
                                         <td style={{ padding: '10px', fontWeight: 500 }}>{category}</td>
                                         <td style={{ padding: '10px', textAlign: 'right', color: '#4CAF50' }}>
-                                          {mayAmount.toFixed(2)}
+                                          {month1Amount.toFixed(2)}
                                         </td>
                                         <td style={{ padding: '10px', textAlign: 'right', color: '#4CAF50' }}>
-                                          {juneAmount.toFixed(2)}
+                                          {month2Amount.toFixed(2)}
                                         </td>
                                         <td style={{ 
                                           padding: '10px', 
@@ -3066,20 +3084,20 @@ export default function Home() {
                                   <tr style={{ backgroundColor: '#f5f5f5', fontWeight: 'bold' }}>
                                     <td style={{ padding: '12px', borderTop: '2px solid #ddd' }}>TOTAL</td>
                                     <td style={{ padding: '12px', textAlign: 'right', borderTop: '2px solid #ddd', color: '#4CAF50' }}>
-                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData['2025-05'][cat] || 0), 0).toFixed(2)}
+                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData[month1][cat] || 0), 0).toFixed(2)}
                                     </td>
                                     <td style={{ padding: '12px', textAlign: 'right', borderTop: '2px solid #ddd', color: '#4CAF50' }}>
-                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData['2025-06'][cat] || 0), 0).toFixed(2)}
+                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData[month2][cat] || 0), 0).toFixed(2)}
                                     </td>
                                     <td style={{ 
                                       padding: '12px', 
                                       textAlign: 'right', 
                                       borderTop: '2px solid #ddd',
                                       color: comparisonCategories.reduce((sum, cat) => 
-                                        sum + ((monthlyData['2025-06'][cat] || 0) - (monthlyData['2025-05'][cat] || 0)), 0) >= 0 ? '#2E7D32' : '#C62828'
+                                        sum + ((monthlyData[month2][cat] || 0) - (monthlyData[month1][cat] || 0)), 0) >= 0 ? '#2E7D32' : '#C62828'
                                     }}>
                                       {comparisonCategories.reduce((sum, cat) => 
-                                        sum + ((monthlyData['2025-06'][cat] || 0) - (monthlyData['2025-05'][cat] || 0)), 0).toFixed(2)}
+                                        sum + ((monthlyData[month2][cat] || 0) - (monthlyData[month1][cat] || 0)), 0).toFixed(2)}
                                     </td>
                                   </tr>
                                 </tfoot>
@@ -3100,7 +3118,6 @@ export default function Home() {
 
             {selectedSection === 'monthly_income_comparison' && (
               <div style={{ marginTop: '0', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-                <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#333' }}>Monthly Income Comparison (May vs June)</h3>
                 {(() => {
                   if (isLoadingReport) {
                     return (
@@ -3109,6 +3126,35 @@ export default function Home() {
                       </div>
                     );
                   }
+
+                  // Get all unique months from the income data and sort them
+                  const availableMonths = [...new Set(
+                    allSheetsData.income.map(i => i.date.substring(0, 7))
+                  )].sort();
+
+                  // If we have less than 2 months, show a message
+                  if (availableMonths.length < 2) {
+                    return (
+                      <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                        Need at least 2 months of income data to compare. You have data for: {availableMonths.length} month(s).
+                      </div>
+                    );
+                  }
+
+                  // Use the last two months for comparison
+                  const month1 = availableMonths[availableMonths.length - 2]; // Second to last month
+                  const month2 = availableMonths[availableMonths.length - 1]; // Last month
+
+                  // Format month for display (YYYY-MM to Month YYYY)
+                  const formatMonth = (yearMonth) => {
+                    const [year, month] = yearMonth.split('-');
+                    const date = new Date(year, parseInt(month) - 1);
+                    return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                  };
+
+                  const month1Name = formatMonth(month1);
+                  const month2Name = formatMonth(month2);
+
                   // Category selection UI
                   const CategorySelector = () => (
                     <div style={{ marginBottom: '20px' }}>
@@ -3149,33 +3195,40 @@ export default function Home() {
                       </div>
                     </div>
                   );
-                  // Process data for selected categories
-                  const mayStart = '2025-05-01';
-                  const mayEnd = '2025-05-31';
-                  const junStart = '2025-06-01';
-                  const junEnd = '2025-06-30';
+
+                  // Process data for selected categories using dynamic months
+                  const month1Start = `${month1}-01`;
+                  const month1End = `${month1}-31`;
+                  const month2Start = `${month2}-01`;
+                  const month2End = `${month2}-31`;
+
                   // Filter income for each month and category
-                  const mayIncome = allSheetsData.income.filter(
-                    i => i.date >= mayStart && i.date <= mayEnd
+                  const month1Income = allSheetsData.income.filter(
+                    i => i.date >= month1Start && i.date <= month1End
                   );
-                  const junIncome = allSheetsData.income.filter(
-                    i => i.date >= junStart && i.date <= junEnd
+                  const month2Income = allSheetsData.income.filter(
+                    i => i.date >= month2Start && i.date <= month2End
                   );
+
                   // Build monthlyData for selected categories
-                  const monthlyData = {
-                    '2025-05': {},
-                    '2025-06': {}
-                  };
+                  const monthlyData = {};
+                  monthlyData[month1] = {};
+                  monthlyData[month2] = {};
+                  
                   comparisonCategories.forEach(category => {
-                    monthlyData['2025-05'][category] = mayIncome
+                    monthlyData[month1][category] = month1Income
                       .filter(i => i.category === category)
                       .reduce((sum, i) => sum + parseFloat(i.amount), 0);
-                    monthlyData['2025-06'][category] = junIncome
+                    monthlyData[month2][category] = month2Income
                       .filter(i => i.category === category)
                       .reduce((sum, i) => sum + parseFloat(i.amount), 0);
                   });
+
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                      <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#333' }}>
+                        Monthly Income Comparison ({month1Name} vs {month2Name})
+                      </h3>
                       <CategorySelector />
                       {comparisonCategories.length > 0 ? (
                         <>
@@ -3188,15 +3241,15 @@ export default function Home() {
                                   labels: comparisonCategories,
                                   datasets: [
                                     {
-                                      label: 'May 2025',
-                                      data: comparisonCategories.map(category => monthlyData['2025-05'][category] || 0),
+                                      label: month1Name,
+                                      data: comparisonCategories.map(category => monthlyData[month1][category] || 0),
                                       backgroundColor: 'rgba(33, 150, 243, 0.7)', // Blue
                                       borderColor: 'rgba(33, 150, 243, 1)',
                                       borderWidth: 1
                                     },
                                     {
-                                      label: 'June 2025',
-                                      data: comparisonCategories.map(category => monthlyData['2025-06'][category] || 0),
+                                      label: month2Name,
+                                      data: comparisonCategories.map(category => monthlyData[month2][category] || 0),
                                       backgroundColor: 'rgba(76, 175, 80, 0.7)', // Green
                                       borderColor: 'rgba(76, 175, 80, 1)',
                                       borderWidth: 1
@@ -3249,24 +3302,24 @@ export default function Home() {
                                 <thead>
                                   <tr style={{ backgroundColor: '#e3f2fd' }}>
                                     <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Category</th>
-                                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>May 2025</th>
-                                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>June 2025</th>
+                                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>{month1Name}</th>
+                                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>{month2Name}</th>
                                     <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #ddd' }}>Difference</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {comparisonCategories.map(category => {
-                                    const mayAmount = monthlyData['2025-05'][category] || 0;
-                                    const juneAmount = monthlyData['2025-06'][category] || 0;
-                                    const difference = juneAmount - mayAmount;
+                                    const month1Amount = monthlyData[month1][category] || 0;
+                                    const month2Amount = monthlyData[month2][category] || 0;
+                                    const difference = month2Amount - month1Amount;
                                     return (
                                       <tr key={category} style={{ borderBottom: '1px solid #eee' }}>
                                         <td style={{ padding: '10px', fontWeight: 500 }}>{category}</td>
                                         <td style={{ padding: '10px', textAlign: 'right', color: '#2196F3' }}>
-                                          {mayAmount.toFixed(2)}
+                                          {month1Amount.toFixed(2)}
                                         </td>
                                         <td style={{ padding: '10px', textAlign: 'right', color: '#2196F3' }}>
-                                          {juneAmount.toFixed(2)}
+                                          {month2Amount.toFixed(2)}
                                         </td>
                                         <td style={{ 
                                           padding: '10px', 
@@ -3284,20 +3337,20 @@ export default function Home() {
                                   <tr style={{ backgroundColor: '#f5f5f5', fontWeight: 'bold' }}>
                                     <td style={{ padding: '12px', borderTop: '2px solid #ddd' }}>TOTAL</td>
                                     <td style={{ padding: '12px', textAlign: 'right', borderTop: '2px solid #ddd', color: '#2196F3' }}>
-                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData['2025-05'][cat] || 0), 0).toFixed(2)}
+                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData[month1][cat] || 0), 0).toFixed(2)}
                                     </td>
                                     <td style={{ padding: '12px', textAlign: 'right', borderTop: '2px solid #ddd', color: '#2196F3' }}>
-                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData['2025-06'][cat] || 0), 0).toFixed(2)}
+                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData[month2][cat] || 0), 0).toFixed(2)}
                                     </td>
                                     <td style={{ 
                                       padding: '12px', 
                                       textAlign: 'right', 
                                       borderTop: '2px solid #ddd',
                                       color: comparisonCategories.reduce((sum, cat) => 
-                                        sum + ((monthlyData['2025-06'][cat] || 0) - (monthlyData['2025-05'][cat] || 0)), 0) >= 0 ? '#2E7D32' : '#C62828'
+                                        sum + ((monthlyData[month2][cat] || 0) - (monthlyData[month1][cat] || 0)), 0) >= 0 ? '#2E7D32' : '#C62828'
                                     }}>
                                       {comparisonCategories.reduce((sum, cat) => 
-                                        sum + ((monthlyData['2025-06'][cat] || 0) - (monthlyData['2025-05'][cat] || 0)), 0).toFixed(2)}
+                                        sum + ((monthlyData[month2][cat] || 0) - (monthlyData[month1][cat] || 0)), 0).toFixed(2)}
                                     </td>
                                   </tr>
                                 </tfoot>
