@@ -91,8 +91,14 @@ export default function Home() {
   const [showCumulative, setShowCumulative] = useState(false);
   const [allSheetsData, setAllSheetsData] = useState({ expenses: [], income: [] });
   const [isLoadingReport, setIsLoadingReport] = useState(false);
-  const [comparisonCategories, setComparisonCategories] = useState([]);
+  const [expenseComparisonCategories, setExpenseComparisonCategories] = useState([]);
+  const [incomeComparisonCategories, setIncomeComparisonCategories] = useState([]);
   const pageSize = 10; // Use the same page size as in the API
+
+  // Add complete data states for reports
+  const [completeExpenses, setCompleteExpenses] = useState([]);
+  const [completeIncome, setCompleteIncome] = useState([]);
+  const [isLoadingCompleteData, setIsLoadingCompleteData] = useState(false);
 
   // Fetch data when component mounts
   useEffect(() => {
@@ -158,6 +164,46 @@ export default function Home() {
     }
   };
 
+  // Fetch complete expenses for reports (no pagination)
+  const fetchCompleteExpenses = async () => {
+    try {
+      console.log('=== FETCH COMPLETE EXPENSES ===');
+      const url = `/api/expenses?sheet_name=${currentSheet}&pageSize=10000`;
+      console.log('Requesting URL:', url);
+      
+      const response = await fetch(url);
+      const result = await response.json();
+      
+      console.log('API Response:', result);
+      console.log('Data length:', result.data?.length);
+      console.log('Sample data:', result.data?.slice(0, 3));
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data || [];
+    } catch (error) {
+      console.error('Error fetching complete expenses:', error);
+      return [];
+    }
+  };
+
+  // Fetch complete income for reports (no pagination)
+  const fetchCompleteIncome = async () => {
+    try {
+      const url = `/api/income?sheet_name=${currentSheet}&pageSize=10000`;
+      const response = await fetch(url);
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data || [];
+    } catch (error) {
+      console.error('Error fetching complete income:', error);
+      return [];
+    }
+  };
+
   // Handle sheet change
   const handleSheetChange = (newSheet) => {
     setCurrentSheet(newSheet);
@@ -179,6 +225,52 @@ export default function Home() {
   useEffect(() => {
     fetchIncome();
   }, [incomePage]);
+
+  // Fetch complete data for reports when needed
+  useEffect(() => {
+    const fetchCompleteData = async () => {
+      console.log('=== FETCH COMPLETE DATA USEEFFECT ===');
+      console.log('selectedSection:', selectedSection);
+      console.log('reportType:', reportType);
+      console.log('currentSheet:', currentSheet);
+      
+      const shouldFetch = selectedSection === 'report' || 
+          selectedSection === 'expense_monthly_trend' || 
+          selectedSection === 'income_monthly_trend' ||
+          selectedSection === 'cashflow_trend' ||
+          (selectedSection === 'report' && (reportType === 'expense_monthly_trend' || reportType === 'income_monthly_trend'));
+      
+      console.log('Should fetch complete data:', shouldFetch);
+      
+      if (shouldFetch) {
+        console.log('FETCHING COMPLETE DATA - Starting...');
+        setIsLoadingCompleteData(true);
+        try {
+          const [expenseData, incomeData] = await Promise.all([
+            fetchCompleteExpenses(),
+            fetchCompleteIncome()
+          ]);
+          console.log('FETCHED COMPLETE DATA:');
+          console.log('- expenseData length:', expenseData?.length);
+          console.log('- incomeData length:', incomeData?.length);
+          console.log('- expenseData sample:', expenseData?.slice(0, 3));
+          
+          setCompleteExpenses(expenseData);
+          setCompleteIncome(incomeData);
+          console.log('COMPLETE DATA SET IN STATE');
+        } catch (error) {
+          console.error('Error fetching complete data:', error);
+        } finally {
+          setIsLoadingCompleteData(false);
+          console.log('FETCH COMPLETE DATA - Finished');
+        }
+      } else {
+        console.log('NOT FETCHING - conditions not met');
+      }
+    };
+
+    fetchCompleteData();
+  }, [selectedSection, currentSheet, reportType]);
 
   // Handle expense form changes
   const handleExpenseChange = (e) => {
@@ -1167,8 +1259,8 @@ export default function Home() {
                       onClick={() => { 
                         setAnalyzeMenuOpen(false); 
                         setSelectedSection('monthly_comparison'); 
-                        if (!comparisonCategories.length && expenseCategories.length > 0) {
-                          setComparisonCategories(expenseCategories.slice(0, Math.min(3, expenseCategories.length)));
+                        if (!expenseComparisonCategories.length && expenseCategories.length > 0) {
+                          setExpenseComparisonCategories(expenseCategories.slice(0, Math.min(3, expenseCategories.length)));
                         }
                       }}
                     >
@@ -1179,8 +1271,8 @@ export default function Home() {
                       onClick={() => { 
                         setAnalyzeMenuOpen(false); 
                         setSelectedSection('monthly_income_comparison');
-                        if (!comparisonCategories.length && incomeCategories.length > 0) {
-                          setComparisonCategories(incomeCategories.slice(0, Math.min(3, incomeCategories.length)));
+                        if (!incomeComparisonCategories.length && incomeCategories.length > 0) {
+                          setIncomeComparisonCategories(incomeCategories.slice(0, Math.min(3, incomeCategories.length)));
                         }
                       }}
                     >
@@ -1854,8 +1946,8 @@ export default function Home() {
                       value={reportType}
                       onChange={e => {
                         setReportType(e.target.value);
-                        setShowMonthlyTrend(e.target.value === 'monthly_trend');
-                        if (e.target.value === 'monthly_trend') {
+                        setShowMonthlyTrend(e.target.value === 'expense_monthly_trend');
+                        if (e.target.value === 'expense_monthly_trend') {
                           // Remove any non-expense categories
                           const filtered = selectedCategories.filter(cat => expenseCategories.includes(cat));
                           if (filtered.length > 0) {
@@ -1881,14 +1973,14 @@ export default function Home() {
                     >
                       <option value="expense">Expense</option>
                       <option value="income">Income</option>
-                      <option value="monthly_trend">Expense monthly trend</option>
+                      <option value="expense_monthly_trend">Expense monthly trend</option>
                       <option value="income_monthly_trend">Income monthly trend</option>
                     </select>
                   </div>
                 </div>
                 
                 {/* Category Selection for Monthly Trend */}
-                {reportType === 'monthly_trend' && (
+                {reportType === 'expense_monthly_trend' && (
                   <div style={{ 
                     display: 'flex',
                     flexDirection: 'row',
@@ -1990,9 +2082,30 @@ export default function Home() {
                       {/* Monthly Trend Chart */}
                       {selectedCategories.length > 0 ? (
                         (() => {
+                          console.log('=== EXPENSE MONTHLY TREND DEBUG ===');
+                          console.log('selectedSection:', selectedSection);
+                          console.log('reportType:', reportType);
+                          console.log('currentSheet:', currentSheet);
+                          console.log('isLoadingCompleteData:', isLoadingCompleteData);
+                          console.log('completeExpenses length:', completeExpenses?.length);
+                          console.log('completeExpenses sample:', completeExpenses?.slice(0, 3));
+                          console.log('expenses (paginated) length:', expenses?.length);
+                          console.log('expenses (paginated) sample:', expenses?.slice(0, 3));
+                          
+                          // Show loading state while fetching complete data
+                          if (isLoadingCompleteData) {
+                            return (
+                              <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                                Loading complete expense data for trend analysis...
+                              </div>
+                            );
+                          }
+
                           // Use expenses from the current selected sheet (not filtered by date)
                           // Get full month range from actual data dates
-                          const expenseMonthRange = getFullMonthRangeFromData(expenses.map(e => e.date));
+                          const expenseMonthRange = getFullMonthRangeFromData(completeExpenses.map(e => e.date));
+                          console.log('expenseMonthRange:', expenseMonthRange);
+                          
                           let earliestDate, latestDate, allDates;
                           
                           if (expenseMonthRange) {
@@ -2002,14 +2115,20 @@ export default function Home() {
                             allDates = expenseMonthRange.dates;
                           } else {
                             // Fallback to actual data dates if no data
-                            const sheetDates = expenses.map(e => e.date).sort();
+                            const sheetDates = completeExpenses.map(e => e.date).sort();
                             earliestDate = sheetDates[0];
                             latestDate = sheetDates[sheetDates.length - 1];
-                            allDates = [...new Set(expenses.map(e => e.date))].sort();
+                            allDates = [...new Set(completeExpenses.map(e => e.date))].sort();
                           }
 
+                          console.log('Date range calculated - earliest:', earliestDate, 'latest:', latestDate);
+                          console.log('allDates length:', allDates?.length);
+                          console.log('allDates sample:', allDates?.slice(0, 5));
+
                           // Use all expenses from the current sheet (no manual date filtering)
-                          const sheetExpenses = expenses;
+                          const sheetExpenses = completeExpenses;
+                          console.log('sheetExpenses being used (should be completeExpenses):', sheetExpenses?.length);
+                          console.log('sheetExpenses === completeExpenses:', sheetExpenses === completeExpenses);
                           
                           // Generate colors for each category
                           const categoryColors = [
@@ -2309,9 +2428,18 @@ export default function Home() {
                       {/* Income Monthly Trend Chart */}
                       {selectedCategories.length > 0 ? (
                         (() => {
+                          // Show loading state while fetching complete data
+                          if (isLoadingCompleteData) {
+                            return (
+                              <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                                Loading complete income data for trend analysis...
+                              </div>
+                            );
+                          }
+
                           // Use income from the current selected sheet (not filtered by date)
                           // Get full month range from actual data dates
-                          const incomeMonthRange = getFullMonthRangeFromData(income.map(i => i.date));
+                          const incomeMonthRange = getFullMonthRangeFromData(completeIncome.map(i => i.date));
                           let earliestDate, latestDate, allDates;
                           
                           if (incomeMonthRange) {
@@ -2321,14 +2449,14 @@ export default function Home() {
                             allDates = incomeMonthRange.dates;
                           } else {
                             // Fallback to actual data dates if no data
-                            const sheetDates = income.map(i => i.date).sort();
+                            const sheetDates = completeIncome.map(i => i.date).sort();
                             earliestDate = sheetDates[0];
                             latestDate = sheetDates[sheetDates.length - 1];
-                            allDates = [...new Set(income.map(i => i.date))].sort();
+                            allDates = [...new Set(completeIncome.map(i => i.date))].sort();
                           }
 
                           // Use all income from the current sheet (no manual date filtering)
-                          const sheetIncome = income;
+                          const sheetIncome = completeIncome;
                           
                           // Generate colors for each category
                           const categoryColors = [
@@ -2527,8 +2655,17 @@ export default function Home() {
                 )}
                 
                 {/* Filtered data for charts */}
-                {reportType !== 'monthly_trend' && reportType !== 'income_monthly_trend' && (() => {
-                  const allData = reportType === 'expense' ? expenses : income;
+                {reportType !== 'expense_monthly_trend' && reportType !== 'income_monthly_trend' && (() => {
+                  // Show loading state while fetching complete data
+                  if (isLoadingCompleteData) {
+                    return (
+                      <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                        Loading complete data for reports...
+                      </div>
+                    );
+                  }
+
+                  const allData = reportType === 'expense' ? completeExpenses : completeIncome;
                   
                   // Get full month range from the actual data dates
                   const dataMonthRange = getFullMonthRangeFromData(allData.map(item => item.date));
@@ -2696,8 +2833,17 @@ export default function Home() {
               <div style={{ marginTop: '0', display: 'flex', flexDirection: 'column', gap: '32px' }}>
                 <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#333' }}>Cash Flow Trend</h3>
                 {(() => {
+                  // Show loading state while fetching complete data
+                  if (isLoadingCompleteData) {
+                    return (
+                      <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                        Loading complete data for cash flow trend...
+                      </div>
+                    );
+                  }
+
                   // Sort all transactions by date
-                  const allTransactions = [...expenses, ...income].sort((a, b) => new Date(a.date) - new Date(b.date));
+                  const allTransactions = [...completeExpenses, ...completeIncome].sort((a, b) => new Date(a.date) - new Date(b.date));
                   
                   // Calculate cumulative values
                   const dates = Array.from(new Set(allTransactions.map(t => t.date))).sort();
@@ -2706,11 +2852,11 @@ export default function Home() {
                   const cashFlows = [];
 
                   dates.forEach(date => {
-                    const dayExpenses = expenses
+                    const dayExpenses = completeExpenses
                       .filter(e => e.date <= date)
                       .reduce((sum, e) => sum + parseFloat(e.amount), 0);
                     
-                    const dayIncome = income
+                    const dayIncome = completeIncome
                       .filter(i => i.date <= date)
                       .reduce((sum, i) => sum + parseFloat(i.amount), 0);
 
@@ -3005,7 +3151,7 @@ export default function Home() {
                               display: 'flex',
                               alignItems: 'center',
                               padding: '6px 12px',
-                              backgroundColor: comparisonCategories.includes(category) ? '#e3f2fd' : '#f5f5f5',
+                              backgroundColor: expenseComparisonCategories.includes(category) ? '#e3f2fd' : '#f5f5f5',
                               borderRadius: '4px',
                               cursor: 'pointer',
                               fontSize: '13px',
@@ -3015,12 +3161,12 @@ export default function Home() {
                           >
                             <input
                               type="checkbox"
-                              checked={comparisonCategories.includes(category)}
+                              checked={expenseComparisonCategories.includes(category)}
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setComparisonCategories([...comparisonCategories, category]);
+                                  setExpenseComparisonCategories([...expenseComparisonCategories, category]);
                                 } else {
-                                  setComparisonCategories(comparisonCategories.filter(c => c !== category));
+                                  setExpenseComparisonCategories(expenseComparisonCategories.filter(c => c !== category));
                                 }
                               }}
                               style={{ marginRight: '6px' }}
@@ -3051,7 +3197,7 @@ export default function Home() {
                   monthlyData[month1] = {};
                   monthlyData[month2] = {};
                   
-                  comparisonCategories.forEach(category => {
+                  expenseComparisonCategories.forEach(category => {
                     monthlyData[month1][category] = month1Expenses
                       .filter(e => e.category === category)
                       .reduce((sum, e) => sum + parseFloat(e.amount), 0);
@@ -3067,7 +3213,7 @@ export default function Home() {
                       </h3>
                       <CategorySelector />
                       
-                      {comparisonCategories.length > 0 ? (
+                      {expenseComparisonCategories.length > 0 ? (
                         <>
                           {/* Bar Chart */}
                           <div style={{ background: '#fafafa', borderRadius: '8px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
@@ -3075,18 +3221,18 @@ export default function Home() {
                             <div style={{ height: '400px' }}>
                               <Bar
                                 data={{
-                                  labels: comparisonCategories,
+                                  labels: expenseComparisonCategories,
                                   datasets: [
                                     {
                                       label: month1Name,
-                                      data: comparisonCategories.map(category => monthlyData[month1][category] || 0),
+                                      data: expenseComparisonCategories.map(category => monthlyData[month1][category] || 0),
                                       backgroundColor: 'rgba(33, 150, 243, 0.7)', // Blue
                                       borderColor: 'rgba(33, 150, 243, 1)',
                                       borderWidth: 1
                                     },
                                     {
                                       label: month2Name,
-                                      data: comparisonCategories.map(category => monthlyData[month2][category] || 0),
+                                      data: expenseComparisonCategories.map(category => monthlyData[month2][category] || 0),
                                       backgroundColor: 'rgba(76, 175, 80, 0.7)', // Green
                                       borderColor: 'rgba(76, 175, 80, 1)',
                                       borderWidth: 1
@@ -3146,7 +3292,7 @@ export default function Home() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {comparisonCategories.map(category => {
+                                  {expenseComparisonCategories.map(category => {
                                     const month1Amount = monthlyData[month1][category] || 0;
                                     const month2Amount = monthlyData[month2][category] || 0;
                                     const difference = month2Amount - month1Amount;
@@ -3175,19 +3321,19 @@ export default function Home() {
                                   <tr style={{ backgroundColor: '#f5f5f5', fontWeight: 'bold' }}>
                                     <td style={{ padding: '12px', borderTop: '2px solid #ddd' }}>TOTAL</td>
                                     <td style={{ padding: '12px', textAlign: 'right', borderTop: '2px solid #ddd', color: '#4CAF50' }}>
-                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData[month1][cat] || 0), 0).toFixed(2)}
+                                      {expenseComparisonCategories.reduce((sum, cat) => sum + (monthlyData[month1][cat] || 0), 0).toFixed(2)}
                                     </td>
                                     <td style={{ padding: '12px', textAlign: 'right', borderTop: '2px solid #ddd', color: '#4CAF50' }}>
-                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData[month2][cat] || 0), 0).toFixed(2)}
+                                      {expenseComparisonCategories.reduce((sum, cat) => sum + (monthlyData[month2][cat] || 0), 0).toFixed(2)}
                                     </td>
                                     <td style={{ 
                                       padding: '12px', 
                                       textAlign: 'right', 
                                       borderTop: '2px solid #ddd',
-                                      color: comparisonCategories.reduce((sum, cat) => 
+                                      color: expenseComparisonCategories.reduce((sum, cat) => 
                                         sum + ((monthlyData[month2][cat] || 0) - (monthlyData[month1][cat] || 0)), 0) >= 0 ? '#2E7D32' : '#C62828'
                                     }}>
-                                      {comparisonCategories.reduce((sum, cat) => 
+                                      {expenseComparisonCategories.reduce((sum, cat) => 
                                         sum + ((monthlyData[month2][cat] || 0) - (monthlyData[month1][cat] || 0)), 0).toFixed(2)}
                                     </td>
                                   </tr>
@@ -3260,7 +3406,7 @@ export default function Home() {
                               display: 'flex',
                               alignItems: 'center',
                               padding: '6px 12px',
-                              backgroundColor: comparisonCategories.includes(category) ? '#e3f2fd' : '#f5f5f5',
+                              backgroundColor: incomeComparisonCategories.includes(category) ? '#e3f2fd' : '#f5f5f5',
                               borderRadius: '4px',
                               cursor: 'pointer',
                               fontSize: '13px',
@@ -3270,12 +3416,12 @@ export default function Home() {
                           >
                             <input
                               type="checkbox"
-                              checked={comparisonCategories.includes(category)}
+                              checked={incomeComparisonCategories.includes(category)}
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setComparisonCategories([...comparisonCategories, category]);
+                                  setIncomeComparisonCategories([...incomeComparisonCategories, category]);
                                 } else {
-                                  setComparisonCategories(comparisonCategories.filter(c => c !== category));
+                                  setIncomeComparisonCategories(incomeComparisonCategories.filter(c => c !== category));
                                 }
                               }}
                               style={{ marginRight: '6px' }}
@@ -3306,7 +3452,7 @@ export default function Home() {
                   monthlyData[month1] = {};
                   monthlyData[month2] = {};
                   
-                  comparisonCategories.forEach(category => {
+                  incomeComparisonCategories.forEach(category => {
                     monthlyData[month1][category] = month1Income
                       .filter(i => i.category === category)
                       .reduce((sum, i) => sum + parseFloat(i.amount), 0);
@@ -3321,7 +3467,7 @@ export default function Home() {
                         Monthly Income Comparison ({month1Name} vs {month2Name})
                       </h3>
                       <CategorySelector />
-                      {comparisonCategories.length > 0 ? (
+                      {incomeComparisonCategories.length > 0 ? (
                         <>
                           {/* Bar Chart */}
                           <div style={{ background: '#fafafa', borderRadius: '8px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
@@ -3329,18 +3475,18 @@ export default function Home() {
                             <div style={{ height: '400px' }}>
                               <Bar
                                 data={{
-                                  labels: comparisonCategories,
+                                  labels: incomeComparisonCategories,
                                   datasets: [
                                     {
                                       label: month1Name,
-                                      data: comparisonCategories.map(category => monthlyData[month1][category] || 0),
+                                      data: incomeComparisonCategories.map(category => monthlyData[month1][category] || 0),
                                       backgroundColor: 'rgba(33, 150, 243, 0.7)', // Blue
                                       borderColor: 'rgba(33, 150, 243, 1)',
                                       borderWidth: 1
                                     },
                                     {
                                       label: month2Name,
-                                      data: comparisonCategories.map(category => monthlyData[month2][category] || 0),
+                                      data: incomeComparisonCategories.map(category => monthlyData[month2][category] || 0),
                                       backgroundColor: 'rgba(76, 175, 80, 0.7)', // Green
                                       borderColor: 'rgba(76, 175, 80, 1)',
                                       borderWidth: 1
@@ -3399,7 +3545,7 @@ export default function Home() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {comparisonCategories.map(category => {
+                                  {incomeComparisonCategories.map(category => {
                                     const month1Amount = monthlyData[month1][category] || 0;
                                     const month2Amount = monthlyData[month2][category] || 0;
                                     const difference = month2Amount - month1Amount;
@@ -3428,19 +3574,19 @@ export default function Home() {
                                   <tr style={{ backgroundColor: '#f5f5f5', fontWeight: 'bold' }}>
                                     <td style={{ padding: '12px', borderTop: '2px solid #ddd' }}>TOTAL</td>
                                     <td style={{ padding: '12px', textAlign: 'right', borderTop: '2px solid #ddd', color: '#2196F3' }}>
-                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData[month1][cat] || 0), 0).toFixed(2)}
+                                      {incomeComparisonCategories.reduce((sum, cat) => sum + (monthlyData[month1][cat] || 0), 0).toFixed(2)}
                                     </td>
                                     <td style={{ padding: '12px', textAlign: 'right', borderTop: '2px solid #ddd', color: '#2196F3' }}>
-                                      {comparisonCategories.reduce((sum, cat) => sum + (monthlyData[month2][cat] || 0), 0).toFixed(2)}
+                                      {incomeComparisonCategories.reduce((sum, cat) => sum + (monthlyData[month2][cat] || 0), 0).toFixed(2)}
                                     </td>
                                     <td style={{ 
                                       padding: '12px', 
                                       textAlign: 'right', 
                                       borderTop: '2px solid #ddd',
-                                      color: comparisonCategories.reduce((sum, cat) => 
+                                      color: incomeComparisonCategories.reduce((sum, cat) => 
                                         sum + ((monthlyData[month2][cat] || 0) - (monthlyData[month1][cat] || 0)), 0) >= 0 ? '#2E7D32' : '#C62828'
                                     }}>
-                                      {comparisonCategories.reduce((sum, cat) => 
+                                      {incomeComparisonCategories.reduce((sum, cat) => 
                                         sum + ((monthlyData[month2][cat] || 0) - (monthlyData[month1][cat] || 0)), 0).toFixed(2)}
                                     </td>
                                   </tr>
