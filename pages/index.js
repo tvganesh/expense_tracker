@@ -1095,7 +1095,7 @@ export default function Home() {
           boxShadow: '2px 0 8px rgba(0,0,0,0.04)'
         }}>
           <div style={{ fontWeight: 'bold', fontSize: '20px', marginBottom: '30px', textAlign: 'center', letterSpacing: '1px' }}>
-            Financial Tracker
+            Expense Tracker
           </div>
           <nav style={{ flex: 1 }}>
             <div
