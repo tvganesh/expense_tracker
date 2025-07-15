@@ -722,6 +722,51 @@ export default function Home() {
 
   console.log('allSheetsData for report:', allSheetsData);
 
+  // Helper function to generate full month date range from actual data dates
+  const getFullMonthRangeFromData = (dates) => {
+    if (!dates || dates.length === 0) {
+      return null;
+    }
+    
+    // Find the earliest and latest dates from actual data
+    const sortedDates = dates.sort();
+    const earliestDate = new Date(sortedDates[0]);
+    const latestDate = new Date(sortedDates[sortedDates.length - 1]);
+    
+    // Determine the month range to cover
+    const startMonth = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
+    const endMonth = new Date(latestDate.getFullYear(), latestDate.getMonth() + 1, 0); // Last day of the month
+    
+    // Generate all dates from start of first month to end of last month
+    const allDates = [];
+    const currentDate = new Date(startMonth);
+    
+    while (currentDate <= endMonth) {
+      const year = currentDate.getFullYear();
+      const month = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+      const day = currentDate.getDate().toString().padStart(2, '0');
+      allDates.push(`${year}-${month}-${day}`);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Format start and end dates for display
+    const startYear = startMonth.getFullYear();
+    const startMonthNum = (startMonth.getMonth() + 1).toString().padStart(2, '0');
+    const startDay = startMonth.getDate().toString().padStart(2, '0');
+    const startDateStr = `${startYear}-${startMonthNum}-${startDay}`;
+    
+    const endYear = endMonth.getFullYear();
+    const endMonthNum = (endMonth.getMonth() + 1).toString().padStart(2, '0');
+    const endDay = endMonth.getDate().toString().padStart(2, '0');
+    const endDateStr = `${endYear}-${endMonthNum}-${endDay}`;
+    
+    return {
+      startDate: startDateStr,
+      endDate: endDateStr,
+      dates: allDates
+    };
+  };
+
   return (
     <div style={{ minHeight: '100vh', fontFamily: 'Arial, sans-serif', fontSize: '14px' }}>
       {/* Import Success Modal */}
@@ -1840,24 +1885,6 @@ export default function Home() {
                       <option value="income_monthly_trend">Income monthly trend</option>
                     </select>
                   </div>
-                  <div>
-                    <label style={{ fontWeight: 500, marginRight: '6px' }}>From:</label>
-                    <input
-                      type="date"
-                      value={reportFromDate}
-                      onChange={e => setReportFromDate(e.target.value)}
-                      style={{ padding: '6px 8px', fontSize: '14px', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontWeight: 500, marginRight: '6px' }}>To:</label>
-                    <input
-                      type="date"
-                      value={reportToDate}
-                      onChange={e => setReportToDate(e.target.value)}
-                      style={{ padding: '6px 8px', fontSize: '14px', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                  </div>
                 </div>
                 
                 {/* Category Selection for Monthly Trend */}
@@ -1963,18 +1990,26 @@ export default function Home() {
                       {/* Monthly Trend Chart */}
                       {selectedCategories.length > 0 ? (
                         (() => {
-                          // Get all dates in the filtered period
-                          let filteredExpenses = expenses;
-                          if (reportFromDate || reportToDate) {
-                            filteredExpenses = expenses.filter(item => {
-                              if (reportFromDate && item.date < reportFromDate) return false;
-                              if (reportToDate && item.date > reportToDate) return false;
-                              return true;
-                            });
+                          // Use expenses from the current selected sheet (not filtered by date)
+                          // Get full month range from actual data dates
+                          const expenseMonthRange = getFullMonthRangeFromData(expenses.map(e => e.date));
+                          let earliestDate, latestDate, allDates;
+                          
+                          if (expenseMonthRange) {
+                            // Use full month range
+                            earliestDate = expenseMonthRange.startDate;
+                            latestDate = expenseMonthRange.endDate;
+                            allDates = expenseMonthRange.dates;
+                          } else {
+                            // Fallback to actual data dates if no data
+                            const sheetDates = expenses.map(e => e.date).sort();
+                            earliestDate = sheetDates[0];
+                            latestDate = sheetDates[sheetDates.length - 1];
+                            allDates = [...new Set(expenses.map(e => e.date))].sort();
                           }
 
-                          // Get dates
-                          const allDates = [...new Set(filteredExpenses.map(e => e.date))].sort();
+                          // Use all expenses from the current sheet (no manual date filtering)
+                          const sheetExpenses = expenses;
                           
                           // Generate colors for each category
                           const categoryColors = [
@@ -1993,7 +2028,7 @@ export default function Home() {
                           // Create datasets for each selected category
                           const datasets = selectedCategories.flatMap((category, index) => {
                             // Filter expenses for this category
-                            const categoryExpenses = filteredExpenses.filter(e => e.category === category);
+                            const categoryExpenses = sheetExpenses.filter(e => e.category === category);
                             
                             // Get color for this category (cycle through colors if more categories than colors)
                             const colorIndex = index % categoryColors.length;
@@ -2046,20 +2081,25 @@ export default function Home() {
                           const dateLabels = allDates.map(date => date);
                           
                           // Calculate total for all selected categories
-                          const totalForSelectedCategories = filteredExpenses
+                          const totalForSelectedCategories = sheetExpenses
                             .filter(e => selectedCategories.includes(e.category))
                             .reduce((sum, e) => sum + parseFloat(e.amount), 0);
                           
                           // Transaction count for all selected categories
-                          const transactionCount = filteredExpenses
+                          const transactionCount = sheetExpenses
                             .filter(e => selectedCategories.includes(e.category))
                             .length;
                           
                           return (
                             <div style={{ background: '#fafafa', borderRadius: '8px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                               <h4 style={{ marginTop: 0, marginBottom: '15px', color: '#4CAF50' }}>
-                                Category Expenses Over Time
+                                Category Expenses Over Time - {currentSheet}
                               </h4>
+                              {earliestDate && latestDate && (
+                                <div style={{ marginBottom: '15px', fontSize: '13px', color: '#666' }}>
+                                  Date range: {earliestDate} to {latestDate}
+                                </div>
+                              )}
                               <Line
                                 data={{
                                   labels: dateLabels,
@@ -2112,10 +2152,10 @@ export default function Home() {
                                 borderRadius: '8px'
                               }}>
                                 <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>
-                                  Selected Categories Statistics
+                                  Selected Categories Statistics - {currentSheet}
                                 </h4>
                                 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minWidth(180px, 1fr))', gap: '15px' }}>
                                   <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
                                     <div style={{ fontSize: '13px', color: '#666', marginBottom: '5px' }}>Total Spent</div>
                                     <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#4CAF50' }}>
@@ -2143,9 +2183,9 @@ export default function Home() {
                                     <div style={{ fontSize: '13px', color: '#666', marginBottom: '5px' }}>% of Total Expenses</div>
                                     <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#4CAF50' }}>
                                       {(() => {
-                                        const totalExpensesInPeriod = filteredExpenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
-                                        return totalExpensesInPeriod > 0 
-                                          ? `${((totalForSelectedCategories / totalExpensesInPeriod) * 100).toFixed(1)}%`
+                                        const totalExpensesInSheet = sheetExpenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+                                        return totalExpensesInSheet > 0 
+                                          ? `${((totalForSelectedCategories / totalExpensesInSheet) * 100).toFixed(1)}%`
                                           : '0.0%';
                                       })()}
                                     </div>
@@ -2269,17 +2309,27 @@ export default function Home() {
                       {/* Income Monthly Trend Chart */}
                       {selectedCategories.length > 0 ? (
                         (() => {
-                          // Get all dates in the filtered period
-                          let filteredIncome = income;
-                          if (reportFromDate || reportToDate) {
-                            filteredIncome = income.filter(item => {
-                              if (reportFromDate && item.date < reportFromDate) return false;
-                              if (reportToDate && item.date > reportToDate) return false;
-                              return true;
-                            });
+                          // Use income from the current selected sheet (not filtered by date)
+                          // Get full month range from actual data dates
+                          const incomeMonthRange = getFullMonthRangeFromData(income.map(i => i.date));
+                          let earliestDate, latestDate, allDates;
+                          
+                          if (incomeMonthRange) {
+                            // Use full month range
+                            earliestDate = incomeMonthRange.startDate;
+                            latestDate = incomeMonthRange.endDate;
+                            allDates = incomeMonthRange.dates;
+                          } else {
+                            // Fallback to actual data dates if no data
+                            const sheetDates = income.map(i => i.date).sort();
+                            earliestDate = sheetDates[0];
+                            latestDate = sheetDates[sheetDates.length - 1];
+                            allDates = [...new Set(income.map(i => i.date))].sort();
                           }
-                          // Get dates
-                          const allDates = [...new Set(filteredIncome.map(e => e.date))].sort();
+
+                          // Use all income from the current sheet (no manual date filtering)
+                          const sheetIncome = income;
+                          
                           // Generate colors for each category
                           const categoryColors = [
                             { borderColor: '#2196F3', backgroundColor: 'rgba(33, 150, 243, 0.1)' },  // Blue
@@ -2292,13 +2342,16 @@ export default function Home() {
                             { borderColor: '#E91E63', backgroundColor: 'rgba(233, 30, 99, 0.1)' },  // Pink
                             { borderColor: '#00BCD4', backgroundColor: 'rgba(0, 188, 212, 0.1)' },  // Cyan
                           ];
+                          
                           // Create datasets for each selected category
                           const datasets = selectedCategories.flatMap((category, index) => {
                             // Filter income for this category
-                            const categoryIncome = filteredIncome.filter(e => e.category === category);
+                            const categoryIncome = sheetIncome.filter(e => e.category === category);
+                            
                             // Get color for this category (cycle through colors if more categories than colors)
                             const colorIndex = index % categoryColors.length;
                             const color = categoryColors[colorIndex];
+                            
                             // Create regular trend data points
                             const regularDataPoints = allDates.map(date => {
                               const dayIncome = categoryIncome
@@ -2306,6 +2359,7 @@ export default function Home() {
                                 .reduce((sum, e) => sum + parseFloat(e.amount), 0);
                               return dayIncome;
                             });
+
                             // Create base dataset
                             const baseDataset = {
                               label: category.charAt(0).toUpperCase() + category.slice(1),
@@ -2315,6 +2369,7 @@ export default function Home() {
                               fill: false,
                               tension: 0.4
                             };
+
                             // If cumulative trend is enabled, add cumulative dataset
                             if (showCumulative) {
                               const cumulativeDataPoints = allDates.map((date, index) => {
@@ -2337,21 +2392,30 @@ export default function Home() {
                             }
                             return [baseDataset];
                           });
+                          
                           // Generate labels for dates
                           const dateLabels = allDates.map(date => date);
+                          
                           // Calculate total for all selected categories
-                          const totalForSelectedCategories = filteredIncome
+                          const totalForSelectedCategories = sheetIncome
                             .filter(e => selectedCategories.includes(e.category))
                             .reduce((sum, e) => sum + parseFloat(e.amount), 0);
+                          
                           // Transaction count for all selected categories
-                          const transactionCount = filteredIncome
+                          const transactionCount = sheetIncome
                             .filter(e => selectedCategories.includes(e.category))
                             .length;
+                          
                           return (
                             <div style={{ background: '#fafafa', borderRadius: '8px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                               <h4 style={{ marginTop: 0, marginBottom: '15px', color: '#2196F3' }}>
-                                Income Category Trend Over Time
+                                Income Category Trend Over Time - {currentSheet}
                               </h4>
+                              {earliestDate && latestDate && (
+                                <div style={{ marginBottom: '15px', fontSize: '13px', color: '#666' }}>
+                                  Date range: {earliestDate} to {latestDate}
+                                </div>
+                              )}
                               <Line
                                 data={{
                                   labels: dateLabels,
@@ -2395,6 +2459,7 @@ export default function Home() {
                                   }
                                 }}
                               />
+                              
                               {/* Summary Statistics for Selected Categories */}
                               <div style={{ 
                                 marginTop: '30px',
@@ -2403,8 +2468,9 @@ export default function Home() {
                                 borderRadius: '8px'
                               }}>
                                 <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>
-                                  Selected Income Categories Statistics
+                                  Selected Income Categories Statistics - {currentSheet}
                                 </h4>
+                                
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
                                   <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
                                     <div style={{ fontSize: '13px', color: '#666', marginBottom: '5px' }}>Total Income</div>
@@ -2412,6 +2478,7 @@ export default function Home() {
                                       ₹{totalForSelectedCategories.toFixed(2)}
                                     </div>
                                   </div>
+                                  
                                   <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
                                     <div style={{ fontSize: '13px', color: '#666', marginBottom: '5px' }}>Average per Transaction</div>
                                     <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2196F3' }}>
@@ -2420,19 +2487,21 @@ export default function Home() {
                                         : '₹0.00'}
                                     </div>
                                   </div>
+                                  
                                   <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
                                     <div style={{ fontSize: '13px', color: '#666', marginBottom: '5px' }}>Transaction Count</div>
                                     <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2196F3' }}>
                                       {transactionCount}
                                     </div>
                                   </div>
+                                  
                                   <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
                                     <div style={{ fontSize: '13px', color: '#666', marginBottom: '5px' }}>% of Total Income</div>
                                     <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2196F3' }}>
                                       {(() => {
-                                        const totalIncomeInPeriod = filteredIncome.reduce((sum, e) => sum + parseFloat(e.amount), 0);
-                                        return totalIncomeInPeriod > 0 
-                                          ? `${((totalForSelectedCategories / totalIncomeInPeriod) * 100).toFixed(1)}%`
+                                        const totalIncomeInSheet = sheetIncome.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+                                        return totalIncomeInSheet > 0 
+                                          ? `${((totalForSelectedCategories / totalIncomeInSheet) * 100).toFixed(1)}%`
                                           : '0.0%';
                                       })()}
                                     </div>
@@ -2460,11 +2529,23 @@ export default function Home() {
                 {/* Filtered data for charts */}
                 {reportType !== 'monthly_trend' && reportType !== 'income_monthly_trend' && (() => {
                   const allData = reportType === 'expense' ? expenses : income;
-                  const filteredData = allData.filter(item => {
-                    if (reportFromDate && item.date < reportFromDate) return false;
-                    if (reportToDate && item.date > reportToDate) return false;
-                    return true;
-                  });
+                  
+                  // Get full month range from the actual data dates
+                  const dataMonthRange = getFullMonthRangeFromData(allData.map(item => item.date));
+                  let earliestDate, latestDate;
+                  
+                  if (dataMonthRange) {
+                    earliestDate = dataMonthRange.startDate;
+                    latestDate = dataMonthRange.endDate;
+                  } else {
+                    // Fallback if no data
+                    const sortedDates = allData.map(item => item.date).sort();
+                    earliestDate = sortedDates[0];
+                    latestDate = sortedDates[sortedDates.length - 1];
+                  }
+                  
+                  // Use all data within the full month range (no manual filtering)
+                  const filteredData = allData;
                   
                   // Group by category and sum the amounts
                   const categoryMap = new Map();
@@ -2500,9 +2581,14 @@ export default function Home() {
                     <div style={{ display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
                       {/* Bar Chart by Category - Larger */}
                       <div style={{ flex: '3', minWidth: '500px', background: '#fafafa', borderRadius: '8px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                        <h4 style={{ margin: '0 0 12px 0', color: reportType === 'expense' ? '#4CAF50' : '#2196F3' }}>
-                          {reportType === 'expense' ? 'Expenses' : 'Income'} by Category (Bar)
+                        <h4 style={{ margin: '0 0 5px 0', color: reportType === 'expense' ? '#4CAF50' : '#2196F3' }}>
+                          {reportType === 'expense' ? 'Expenses' : 'Income'} by Category (Bar) - {currentSheet}
                         </h4>
+                        {earliestDate && latestDate && (
+                          <div style={{ marginBottom: '15px', fontSize: '13px', color: '#666' }}>
+                            Date range: {earliestDate} to {latestDate}
+                          </div>
+                        )}
                         <div style={{ height: `${Math.max(350, categories.length * 30)}px` }}>
                           <Bar
                             data={{
@@ -2552,9 +2638,14 @@ export default function Home() {
                       
                       {/* Pie Chart by Category - Smaller */}
                       <div style={{ flex: '1', minWidth: '300px', background: '#fafafa', borderRadius: '8px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                        <h4 style={{ margin: '0 0 12px 0', color: reportType === 'expense' ? '#4CAF50' : '#2196F3' }}>
-                          {reportType === 'expense' ? 'Expenses' : 'Income'} by Category (Pie)
+                        <h4 style={{ margin: '0 0 5px 0', color: reportType === 'expense' ? '#4CAF50' : '#2196F3' }}>
+                          {reportType === 'expense' ? 'Expenses' : 'Income'} by Category (Pie) - {currentSheet}
                         </h4>
+                        {earliestDate && latestDate && (
+                          <div style={{ marginBottom: '15px', fontSize: '13px', color: '#666' }}>
+                            Date range: {earliestDate} to {latestDate}
+                          </div>
+                        )}
                         <div style={{ height: '350px' }}>
                           <Pie
                             data={{
